@@ -4,7 +4,11 @@ from PyPDF2 import PdfFileReader as read, PdfFileWriter as create_pdf
 from os import mkdir, path
 from shutil import make_archive
 from functools import wraps
-import fitz
+import io
+from pdfminer.converter import TextConverter
+from pdfminer.pdfinterp import PDFPageInterpreter
+from pdfminer.pdfinterp import PDFResourceManager
+from pdfminer.pdfpage import PDFPage
 
 
 # Functions
@@ -20,34 +24,60 @@ def normalize_spaces(func):
     return wrapper
 
 
+def extract_text_by_page(pdf_file):
+    """
+    Генератор текста страниц.
+    Выдаёт текст со страницы с номером, соответствующим текущей итерации.
+    """
+    for page in pdf_file:
+        resource_manager = PDFResourceManager()
+        fake_file_handle = io.StringIO()
+        converter = TextConverter(resource_manager, fake_file_handle)
+        page_interpreter = PDFPageInterpreter(resource_manager, converter)
+        page_interpreter.process_page(page)
+
+        text = fake_file_handle.getvalue()
+        yield text
+
+        # Close open handles
+        converter.close()
+        fake_file_handle.close()
+
+
 @normalize_spaces
-def find_name(text, document_type):
+def find_name(page, document_type):
     """
     Находит номер документа в зависимости от его типа.
     Возвращает название файла (без двойных пробелов).
     """
     if document_type == 1:
-        for j in range(len(text)):
-            if text[j].startswith("Договор №"):
-                return text[j][9:-14] + " акт"
-            elif text[j].startswith("Государственный контракт №"):
-                return text[j][26:-14] + " акт"
+        start, shift = page.find("Договор №"), 9
+        if start == -1:
+            start, shift = page.find("Государственный контракт №"), 26
+        end = page.find("от")
+        name = page[start + shift:end] + " акт"
+        return name
     elif document_type == 2:
-        for j in range(len(text)):
-            if text[j] == "Договор " or text[j] == "контракт ":
-                return text[j + 1][1:-1] + " счёт"
+        start, shift = page.find("Договор"), 7
+        if start == -1:
+            start, shift = page.find("контракт"), 8
+        end = page.find("Расчетный")
+        name = page[start + shift:end] + " счёт"
+        return name
     elif document_type == 3:
-        for j in range(len(text)):
-            if text[j].startswith("Договор №"):
-                return text[j][10:] + " с-ф"
-            elif text[j].startswith("Государственный контракт №"):
-                return text[j][27:] + " с-ф"
+        start, shift = page.find("Договор №"), 9
+        if start == -1:
+            start, shift = page.find("Государственный контракт №"), 26
+        end = page.find("Валюта")
+        name = page[start + shift:end] + " с-ф"
+        return name
     elif document_type == 4:
-        for j in range(len(text)):
-            if text[j].startswith("Договор №"):
-                return text[j][10:-15] + " ав"
-            elif text[j].startswith("Государственный контракт №"):
-                return text[j][27:-15] + " ав"
+        start, shift = page.find("Договор №"), 9
+        if start == -1:
+            start, shift = page.find("Государственный контракт №"), 26
+        end = page.find("от")
+        name = page[start + shift:end] + " ав"
+        return name
 
 
 def save_file(document, name, dir_name, errors, page):
@@ -76,13 +106,12 @@ def extract_files(pdf, text_pdf, dir_name, document_type):
     Сохраняет её как отдельный документ.
     """
     errors = list()
-    for i in range(pdf.getNumPages()):
+    for i, page in enumerate(extract_text_by_page(text_pdf)):
         # Extracting current page
         document = create_pdf()
         document.addPage(pdf.getPage(i))
-        text = text_pdf.loadPage(i).getText().split('\n')
         # Writing current document
-        name = find_name(text, document_type)
+        name = find_name(page, document_type)
         if name:
             save_file(document, name, dir_name, errors, i)
         else:
@@ -113,9 +142,13 @@ def collect(working_directory, file_name, document_type):
         # Works well with separating on pages
         pdf = read(file)
         # Works well with extracting the text
-        text_pdf = fitz.open(pdf_document)
+        text_pdf = PDFPage.get_pages(
+            file,
+            caching=True,
+            check_extractable=True
+        )
         # Creating new folder for result
-        new_directory = working_directory + "/" + dir_name
+        new_directory = path.join(working_directory, dir_name)
         mkdir(new_directory)
         # Separating pages and saving them with correct names
         err = extract_files(pdf, text_pdf, new_directory, document_type)
