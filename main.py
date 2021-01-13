@@ -1,19 +1,17 @@
 import telebot
-from telebot import types
 from os import getcwd, mkdir, path
 from shutil import rmtree
 from file_collector import collect
-from converter import convert
 from spec_logging import logger
+from config import TOKEN
 
 
 # Some global vars
 
 # Connecting to telegram
-TOKEN = '1124398835:AAEjRk2xcc4Svn4C0D8Fmi8RojTB0wqVy5A'  # SECRET
 bot = telebot.TeleBot(TOKEN)
 # Small main keyboard
-keyboard = types.ReplyKeyboardMarkup(True, True)
+keyboard = telebot.types.ReplyKeyboardMarkup(True, True)
 keyboard.row("Привет!", 'Как это работает?', "Работает неправильно...")
 # Connects chat id with name of working directory and name of caught file
 user_files = dict()
@@ -210,12 +208,12 @@ def type_choosing(chat_id):
     """
     Отправка сообщения с выбором типа документа.
     """
-    keys = types.InlineKeyboardMarkup()
-    but_1 = types.InlineKeyboardButton(text="Акт", callback_data=1)
-    but_2 = types.InlineKeyboardButton(text="Счёт", callback_data=2)
-    but_3 = types.InlineKeyboardButton(text="Счёт-фактуры", callback_data=3)
-    but_4 = types.InlineKeyboardButton(text="Акт выверки", callback_data=4)
-    but_5 = types.InlineKeyboardButton(text="Назад", callback_data="Back")
+    keys = telebot.types.InlineKeyboardMarkup()
+    but_1 = telebot.types.InlineKeyboardButton(text="Акт", callback_data=1)
+    but_2 = telebot.types.InlineKeyboardButton(text="Счёт", callback_data=2)
+    but_3 = telebot.types.InlineKeyboardButton(text="Счёт-фактуры", callback_data=3)
+    but_4 = telebot.types.InlineKeyboardButton(text="Акт выверки", callback_data=4)
+    but_5 = telebot.types.InlineKeyboardButton(text="Назад", callback_data="Back")
     keys.add(but_1, but_2, but_3, but_4, but_5)
     bot.send_message(
         chat_id,
@@ -259,9 +257,6 @@ def process_document(chat_id, type):
     # Which files are we working with?
     working_directory, document_name = user_files[chat_id]
 
-    # Converting to pdf
-    convert(path.join(working_directory, document_name))
-
     # Processing document
     result_src, errors = collect(working_directory, document_name, type)
 
@@ -272,8 +267,8 @@ def process_document(chat_id, type):
             bot.send_message(
                 chat_id,
                 f"В ходе работы возникла ошибка с страницей № {find_errors[0]}"
-                f" она была пропущена. Возможно, она не удовлетворяет "
-                f"стандартному формату данных."
+                " она была пропущена. Возможно, она не удовлетворяет "
+                "стандартному формату данных."
                 if len(find_errors) == 1 else
                 "В ходе работы возникли ошибки со страницами № " +
                 ", ".join(find_errors) +
@@ -284,9 +279,9 @@ def process_document(chat_id, type):
         if save_errors:
             bot.send_message(
                 chat_id,
-                f"В ходе работы возникла ошибка сохранения с страницей "
+                "В ходе работы возникла ошибка сохранения с страницей "
                 f"№ {save_errors[0]} она была пропущена. "
-                f"Возможно, она не удовлетворяет стандартному формату данных."
+                "Возможно, она не удовлетворяет стандартному формату данных."
                 if len(save_errors) == 1 else
                 "В ходе работы возникли ошибки сохранения со страницами № " +
                 ", ".join(save_errors) +
@@ -295,12 +290,6 @@ def process_document(chat_id, type):
             )
     with open(result_src, 'rb') as result:
         bot.send_document(chat_id, result)
-
-
-@logger
-def test(chat_id):
-    working_directory, document_name = user_files[chat_id]
-    convert(path.join(working_directory, document_name))
 
 
 # Program loop
